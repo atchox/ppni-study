@@ -1,6 +1,6 @@
 .DS_Store
 _freeze
-.quarto
+/.quarto/
 out
 *.gz
 *.tsv

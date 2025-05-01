@@ -4,5 +4,8 @@ We analyse TRAP-seq data from different mouselines under two nerve injury condit
 
 ## Steps to reproduce
 
-- run `ann2ref.bash`
+Besides R, quarto is needed to compile this project.
+
+- run `ann2ref.sh`
 - Refer to the [data](data/README.md) section
+- run `quarto render`
