@@ -1,0 +1,8 @@
+.DS_Store
+_freeze
+.quarto
+out
+*.gz
+*.tsv
+data/*
+!data/README.md

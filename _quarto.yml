@@ -1,0 +1,29 @@
+title: spinal
+author:
+  - name: Atreya Choudhury
+    affiliation: ETH Zürich
+    corresponding: true
+    email: achoudhury@ethz.ch
+
+project:
+  type: manuscript
+  output-dir: out
+
+manuscript:
+  article: index.qmd
+
+format:
+  html:
+    toc-depth: 3
+    comments:
+      hypothesis: true
+  # docx: default
+  # jats: default
+
+  # (other formats)
+  # pdf: default
+
+# bibliography: references.bib
+
+execute:
+  freeze: true
