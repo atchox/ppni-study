@@ -1,4 +1,4 @@
-curl -o gencode.VM31.gtf.gz https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M31/gencode.vM31.chr_patch_hapl_scaff.annotation.gtf.gz
+curl -o gencode.VM31.gtf.gz https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M31/gencode.vM31.annotation.gtf.gz
 gzcat gencode.VM31.gtf.gz | awk '                    
 $3 == "transcript" { 
     tx_id = ""; gene_name = ""; 
