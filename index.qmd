@@ -2,31 +2,44 @@
 
 ```{r, setup}
 suppressPackageStartupMessages({
-    library(tximport)
-    library(BiocParallel)
-    library(ggrepel)
-    library(SummarizedExperiment)
-    library(SEtools)
-    library(org.Mm.eg.db)
-    library(edgeR)
-    library(ggplot2)
-    library(sechm)
+  library(tximport)
+  library(BiocParallel)
+  library(ggrepel)
+  library(SummarizedExperiment)
+  library(SEtools)
+  library(org.Mm.eg.db)
+  library(edgeR)
+  library(ggplot2)
+  library(sechm)
 })
 register(MulticoreParam(workers = 4))
 ```
 
 ```{r caption="Helper function to extract metadata from filenames"}
 extract_metadata <- function(filename) {
-    matches <- regexec("([A-Z_a-z0-9]+)_([MF])_([A-Z_a-z]+)_D(\\d+)(?:_([A-Z_a-z]+))?.txt", filename)
-    match_details <- regmatches(filename, matches)
+  matches <- regexec(
+    "([A-Z_a-z0-9]+)_([MF])_([A-Z_a-z]+)_D(\\d+)(?:_([A-Z_a-z]+))?.txt",
+    filename
+  )
+  match_details <- regmatches(filename, matches)
 
-    mouseline <- match_details[[1]][2]
-    sex <- match_details[[1]][3]
-    condition <- match_details[[1]][4]
-    day <- as.integer(substr(match_details[[1]][5], 1, 1))
-    processing <- ifelse(match_details[[1]][6] == "", "IP", match_details[[1]][6])
+  mouseline <- match_details[[1]][2]
+  sex <- match_details[[1]][3]
+  condition <- match_details[[1]][4]
+  day <- as.integer(substr(match_details[[1]][5], 1, 1))
+  processing <- ifelse(
+    match_details[[1]][6] == "",
+    "IP",
+    match_details[[1]][6]
+  )
 
-    return(list(mouseline = mouseline, sex = sex, condition = condition, processing = processing, day = day))
+  return(list(
+    mouseline = mouseline,
+    sex = sex,
+    condition = condition,
+    processing = processing,
+    day = day
+  ))
 }
 ```
 
@@ -34,33 +47,43 @@ extract_metadata <- function(filename) {
 
 ```{r}
 files.list <- list.files(
-    path = "data", pattern = "\\.txt$", full.names = TRUE
+  path = "data",
+  pattern = "\\.txt$",
+  full.names = TRUE
 )
 tx2gene <- read.table("tx2gene.tsv")
 files <- tximport(
-    files.list,
-    type = "kallisto", tx2gene = tx2gene, ignoreTxVersion = TRUE
+  files.list,
+  type = "kallisto",
+  tx2gene = tx2gene,
+  ignoreTxVersion = TRUE
 )
 colnames(files$counts) <- basename(files.list)
-meta <- do.call(rbind, lapply(basename(files.list), function(f) {
+meta <- do.call(
+  rbind,
+  lapply(basename(files.list), function(f) {
     as.data.frame(extract_metadata(f), stringsAsFactors = FALSE)
-}))
+  })
+)
 rownames(meta) <- basename(files.list)
 meta$day <- as.factor(meta$day)
 meta$processing <- as.factor(meta$processing)
 meta$cond_day <- factor(
-    paste(meta$condition, meta$day, sep = "_"),
-    levels = c("Naive_7", "Sham_2", "Sham_7", "SNI_2", "SNI_7")
+  paste(meta$condition, meta$day, sep = "_"),
+  levels = c("Naive_7", "Sham_2", "Sham_7", "SNI_2", "SNI_7")
 )
 se <- SummarizedExperiment(
-    list(counts = files$counts),
-    colData = meta
+  list(counts = files$counts),
+  colData = meta
 )
 metadata(se)$anno_colors <- list(
-    sex = c(M = "darkblue", F = "salmon"),
-    condition = c(Naive = "grey", Sham = "chocolate4", SNI = "darkolivegreen4"),
-    day = c("2" = "lightblue1", "7" = "lightblue3"),
-    cond_day = setNames(c("lightgrey", "lightgreen", "darkgreen", "orange", "darkred"), levels(se$cond_day))
+  sex = c(M = "darkblue", F = "salmon"),
+  condition = c(Naive = "grey", Sham = "chocolate4", SNI = "darkolivegreen4"),
+  day = c("2" = "lightblue1", "7" = "lightblue3"),
+  cond_day = setNames(
+    c("lightgrey", "lightgreen", "darkgreen", "orange", "darkred"),
+    levels(se$cond_day)
+  )
 )
 metadata(se)$hmcols <- c("blue", "white", "red")
 metadata(se)$default_view <- list(gridvar = "mouseline")
@@ -75,47 +98,64 @@ keep <- filterByExpr(dge, design)
 dge <- dge[keep, , keep.lib.sizes = FALSE]
 mds <- plotMDS(dge, top = 1500, plot = F)
 mds.df <- data.frame(
-    mouseline = se$mouseline,
-    sex = se$sex,
-    processing = se$processing,
-    MDS1 = mds$x,
-    MDS2 = mds$y
+  mouseline = se$mouseline,
+  sex = se$sex,
+  processing = se$processing,
+  MDS1 = mds$x,
+  MDS2 = mds$y
 )
 
-ggplot(mds.df, aes(x = MDS1, y = MDS2, color = mouseline, shape = sex, size = processing)) +
-    geom_point(alpha = 0.8) +
-    scale_size_discrete(range = c(3, 5)) +
-theme_minimal() +
-    labs(title = "MDS Plot: Mouse Line and Sex", x = "MDS Dimension 1", y = "MDS Dimension 2") +
-    theme(legend.position = "right")
+ggplot(
+  mds.df,
+  aes(x = MDS1, y = MDS2, color = mouseline, shape = sex, size = processing)
+) +
+  geom_point(alpha = 0.8) +
+  scale_size_discrete(range = c(3, 5)) +
+  theme_minimal() +
+  labs(
+    title = "MDS Plot: Mouse Line and Sex",
+    x = "MDS Dimension 1",
+    y = "MDS Dimension 2"
+  ) +
+  theme(legend.position = "right")
 ```
 
 ```{r}
 mds.df <- data.frame()
 for (ml in unique(se$mouseline)) {
-    se.sub <- se[, se$mouseline == ml]
-    dge <- DGEList(assays(se.sub)$counts)
-    design <- model.matrix(~ sex + cond_day + processing, data = colData(se.sub))
-    keep <- filterByExpr(dge, design)
-    dge <- dge[keep, , keep.lib.sizes = FALSE]
-    mds.sub <- plotMDS(dge, top = 3000, plot = F)
-    mds.sub.df <- data.frame(
-        mouseline = se.sub$mouseline,
-        cond_day = se.sub$cond_day,
-        processing = se.sub$processing,
-        sex = se.sub$sex,
-        MDS1 = mds.sub$x,
-        MDS2 = mds.sub$y
-    )
-    mds.df <- rbind(mds.df, mds.sub.df)
+  se.sub <- se[, se$mouseline == ml]
+  dge <- DGEList(assays(se.sub)$counts)
+  design <- model.matrix(
+    ~ sex + cond_day + processing,
+    data = colData(se.sub)
+  )
+  keep <- filterByExpr(dge, design)
+  dge <- dge[keep, , keep.lib.sizes = FALSE]
+  mds.sub <- plotMDS(dge, top = 3000, plot = F)
+  mds.sub.df <- data.frame(
+    mouseline = se.sub$mouseline,
+    cond_day = se.sub$cond_day,
+    processing = se.sub$processing,
+    sex = se.sub$sex,
+    MDS1 = mds.sub$x,
+    MDS2 = mds.sub$y
+  )
+  mds.df <- rbind(mds.df, mds.sub.df)
 }
-ggplot(mds.df, aes(x = MDS1, y = MDS2, color = cond_day, shape = sex, size=processing)) +
-    geom_point(alpha = 0.8) +
-    scale_size_discrete(range = c(3, 5)) +
-    facet_wrap(~mouseline) +
-    theme_minimal() +
-    labs(title = "MDS Plot: Cond+Day and Sex", x = "MDS Dimension 1", y = "MDS Dimension 2") +
-    theme(legend.position = "right")
+ggplot(
+  mds.df,
+  aes(x = MDS1, y = MDS2, color = cond_day, shape = sex, size = processing)
+) +
+  geom_point(alpha = 0.8) +
+  scale_size_discrete(range = c(3, 5)) +
+  facet_wrap(~mouseline) +
+  theme_minimal() +
+  labs(
+    title = "MDS Plot: Cond+Day and Sex",
+    x = "MDS Dimension 1",
+    y = "MDS Dimension 2"
+  ) +
+  theme(legend.position = "right")
 ```
 
 ## Interaction Effect
@@ -127,13 +167,15 @@ We skip SVA at this stage as we did not see any significant surrogate variables 
 se <- readRDS("./data/all.rds")
 se <- se[, se$processing == "IP"]
 raw_contrasts <- c(
-    Naive.MvF = "sexM",
-    D2Sham.MvF = "sexM + sexM.cond_daySham_2",
-    D7Sham.MvF = "sexM + sexM.cond_daySham_7",
-    D2SNI.MvF = "sexM + sexM.cond_daySNI_2",
-    D7SNI.MvF = "sexM + sexM.cond_daySNI_7"
+  Naive.MvF = "sexM",
+  D2Sham.MvF = "sexM + sexM.cond_daySham_2",
+  D7Sham.MvF = "sexM + sexM.cond_daySham_7",
+  D2SNI.MvF = "sexM + sexM.cond_daySNI_2",
+  D7SNI.MvF = "sexM + sexM.cond_daySNI_7"
 )
-inter.deas <- bplapply(setNames(unique(colData(se)$mouseline), unique(colData(se)$mouseline)), function(ml) {
+inter.deas <- bplapply(
+  setNames(unique(colData(se)$mouseline), unique(colData(se)$mouseline)),
+  function(ml) {
     se.sub <- se[, colData(se)$mouseline == ml]
     dge <- calcNormFactors(DGEList(counts = assay(se.sub)))
     design <- model.matrix(~ sex * cond_day, data = colData(se.sub))
@@ -141,35 +183,74 @@ inter.deas <- bplapply(setNames(unique(colData(se)$mouseline), unique(colData(se
     dge <- dge[keep, , keep.lib.sizes = FALSE]
     dge <- estimateDisp(dge, design)
     fit <- glmQLFit(dge, design)
-    contrasts <- makeContrasts(contrasts = raw_contrasts, levels = make.names(colnames(design)))
+    contrasts <- makeContrasts(
+      contrasts = raw_contrasts,
+      levels = make.names(colnames(design))
+    )
     colnames(contrasts) <- names(raw_contrasts)
-    deas <- lapply(setNames(colnames(contrasts), colnames(contrasts)), FUN = function(x) {
-        as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, x]), Inf))
-    })
-    deas$MvF <- as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts), Inf))
+    deas <- lapply(
+      setNames(colnames(contrasts), colnames(contrasts)),
+      FUN = function(x) {
+        as.data.frame(topTags(
+          glmQLFTest(fit, contrast = contrasts[, x]),
+          Inf
+        ))
+      }
+    )
+    deas$MvF <- as.data.frame(topTags(
+      glmQLFTest(fit, contrast = contrasts),
+      Inf
+    ))
     deas
-}, BPPARAM = MulticoreParam())
+  },
+  BPPARAM = MulticoreParam()
+)
 inter.deas <- unlist(inter.deas, recursive = FALSE)
 for (f in names(inter.deas)) {
-    rowData(se)[[paste0("DEA.", f)]] <- inter.deas[[f]][row.names(se), ]
+  rowData(se)[[paste0("DEA.", f)]] <- inter.deas[[f]][row.names(se), ]
 }
 se <- se[, order(se$mouseline, se$cond_day, se$sex)]
-se <- log2FC(se, "counts", controls = se$condition == "Naive", by = se$mouseline)
-degs <- unique(unlist(lapply(inter.deas[grep("\\.[A-Za-z0-9]+\\.MvF$", names(inter.deas))], function(x) {
+se <- log2FC(
+  se,
+  "counts",
+  controls = se$condition == "Naive",
+  by = se$mouseline
+)
+degs <- unique(unlist(lapply(
+  inter.deas[grep("\\.[A-Za-z0-9]+\\.MvF$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(9), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(9), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.001)])
-})))
-sechm(se, degs, row_title = "Male vs Female (local)", top_annotation = c("cond_day", "sex"), assayName = "log2FC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "Male vs Female (local)",
+  top_annotation = c("cond_day", "sex"),
+  assayName = "log2FC",
+  show_rownames = T
+)
 
-degs <- unique(unlist(lapply(inter.deas[grep("(cck|Ella|vgat|vglut2)\\.MvF$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("(cck|Ella|vgat|vglut2)\\.MvF$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(9), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(9), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.0006)])
-})))
-sechm(se, degs, row_title = "Male vs Female (global)", top_annotation = c("cond_day", "sex"), assayName = "log2FC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "Male vs Female (global)",
+  top_annotation = c("cond_day", "sex"),
+  assayName = "log2FC",
+  show_rownames = T
+)
 ```
 
 ## Differences due to `cond_day`
@@ -179,76 +260,173 @@ We start by running DEA on various questions and define a general function that 
 
 ```{r}
 raw_contrasts <- c(
-    D2.SNIvSham = "cond_daySNI_2 - cond_daySham_2",
-    D7.SNIvSham = "cond_daySNI_7 - cond_daySham_7",
-    D2.SNIvNaive = "cond_daySNI_2",
-    D7.SNIvNaive = "cond_daySNI_7",
-    D2.ShamvNaive = "cond_daySham_2",
-    D7.ShamvNaive = "cond_daySham_7",
-    SNI.D2vD7 = "cond_daySNI_2 - cond_daySNI_7",
-    Sham.D2vD7 = "cond_daySham_2 - cond_daySham_7"
+  D2.SNIvSham = "cond_daySNI_2 - cond_daySham_2",
+  D7.SNIvSham = "cond_daySNI_7 - cond_daySham_7",
+  D2.SNIvNaive = "cond_daySNI_2",
+  D7.SNIvNaive = "cond_daySNI_7",
+  D2.ShamvNaive = "cond_daySham_2",
+  D7.ShamvNaive = "cond_daySham_7",
+  SNI.D2vD7 = "cond_daySNI_2 - cond_daySNI_7",
+  Sham.D2vD7 = "cond_daySham_2 - cond_daySham_7"
 )
-experiments <- bplapply(setNames(unique(colData(se)$mouseline), unique(colData(se)$mouseline)), function(ml) {
+experiments <- bplapply(
+  setNames(unique(colData(se)$mouseline), unique(colData(se)$mouseline)),
+  function(ml) {
     se.sub <- se[, colData(se)$mouseline == ml]
     dge <- calcNormFactors(DGEList(counts = assay(se.sub)))
-    dge <- dge[filterByExpr(dge, group = colData(se.sub)$cond_day), , keep.lib.sizes = FALSE]
+    dge <- dge[
+      filterByExpr(dge, group = colData(se.sub)$cond_day), ,
+      keep.lib.sizes = FALSE
+    ]
     suppressMessages(invisible(capture.output(
-        se.sub <- svacor(se.sub, ~ sex + cond_day, numSVmethod = "leek", n.sv = 1)
+      se.sub <- svacor(
+        se.sub,
+        ~ sex + cond_day,
+        numSVmethod = "leek",
+        n.sv = 1
+      )
     )))
-    f <- paste(c("~ sex", "cond_day", grep("^SV[1-9]+", colnames(colData(se.sub)), value = T)), collapse = " + ")
+    f <- paste(
+      c(
+        "~ sex",
+        "cond_day",
+        grep("^SV[1-9]+", colnames(colData(se.sub)), value = T)
+      ),
+      collapse = " + "
+    )
     design <- model.matrix(as.formula(f), data = colData(se.sub))
     dge <- estimateDisp(dge, design)
     fit <- glmQLFit(dge, design)
-    contrasts <- makeContrasts(contrasts = raw_contrasts, levels = make.names(colnames(design)))
+    contrasts <- makeContrasts(
+      contrasts = raw_contrasts,
+      levels = make.names(colnames(design))
+    )
     colnames(contrasts) <- names(raw_contrasts)
-    deas <- lapply(setNames(colnames(contrasts), colnames(contrasts)), FUN = function(x) {
-        as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, x]), Inf))
-    })
-    deas$SNIvSham <- as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, grep("D[27]\\.SNIvSham", colnames(contrasts))]), Inf))
-    deas$SNIvNaive <- as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, grep("D[27]\\.SNIvNaive", colnames(contrasts))]), Inf))
-    deas$ShamvNaive <- as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, grep("D[27]\\.ShamvNaive", colnames(contrasts))]), Inf))
-    deas$ShamvNaive <- as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, grep("D[27]\\.ShamvNaive", colnames(contrasts))]), Inf))
-    deas$D2vD7 <- as.data.frame(topTags(glmQLFTest(fit, contrast = contrasts[, grep("(SNI|Sham)\\.D2vD7", colnames(contrasts))]), Inf))
+    deas <- lapply(
+      setNames(colnames(contrasts), colnames(contrasts)),
+      FUN = function(x) {
+        as.data.frame(topTags(
+          glmQLFTest(fit, contrast = contrasts[, x]),
+          Inf
+        ))
+      }
+    )
+    deas$SNIvSham <- as.data.frame(topTags(
+      glmQLFTest(
+        fit,
+        contrast = contrasts[, grep(
+          "D[27]\\.SNIvSham",
+          colnames(contrasts)
+        )]
+      ),
+      Inf
+    ))
+    deas$SNIvNaive <- as.data.frame(topTags(
+      glmQLFTest(
+        fit,
+        contrast = contrasts[, grep(
+          "D[27]\\.SNIvNaive",
+          colnames(contrasts)
+        )]
+      ),
+      Inf
+    ))
+    deas$ShamvNaive <- as.data.frame(topTags(
+      glmQLFTest(
+        fit,
+        contrast = contrasts[, grep(
+          "D[27]\\.ShamvNaive",
+          colnames(contrasts)
+        )]
+      ),
+      Inf
+    ))
+    deas$ShamvNaive <- as.data.frame(topTags(
+      glmQLFTest(
+        fit,
+        contrast = contrasts[, grep(
+          "D[27]\\.ShamvNaive",
+          colnames(contrasts)
+        )]
+      ),
+      Inf
+    ))
+    deas$D2vD7 <- as.data.frame(topTags(
+      glmQLFTest(
+        fit,
+        contrast = contrasts[, grep(
+          "(SNI|Sham)\\.D2vD7",
+          colnames(contrasts)
+        )]
+      ),
+      Inf
+    ))
     list(se = se.sub, deas = deas)
-}, BPPARAM = MulticoreParam())
+  },
+  BPPARAM = MulticoreParam()
+)
 se <- do.call(cbind, lapply(experiments, \(x) x$se))
 inter.deas <- unlist(lapply(experiments, \(x) x$deas), recursive = FALSE)
 for (f in names(inter.deas)) {
-    rowData(se)[[paste0("DEA.", f)]] <- inter.deas[[f]][row.names(se), ]
+  rowData(se)[[paste0("DEA.", f)]] <- inter.deas[[f]][row.names(se), ]
 }
-se <- log2FC(se, "corrected", controls = se$condition == "Naive", by = se$mouseline)
+se <- log2FC(
+  se,
+  "corrected",
+  controls = se$condition == "Naive",
+  by = se$mouseline
+)
 
 volcano_plot <- function(grep.partial, plot.title) {
-    vd <- data.frame()
-    vtg <- data.frame()
-    for (ml in unique(colData(se)$mouseline)) {
-        tmp <- inter.deas[[paste0(ml, grep.partial)]]
-        tmp$ML <- ml
-        tmp$significant <- "Not Significant"
-        tmp$significant[tmp$FDR < 0.05 & tmp$logFC > 1] <- "Upregulated"
-        tmp$significant[tmp$FDR < 0.05 & tmp$logFC < -1] <- "Downregulated"
-        tg <- tmp[tmp$FDR < 0.01 & abs(tmp$logFC) > 2, ]
-        tg <- tg[order(tg$FDR), ][1:min(10, nrow(tg)), ]
+  vd <- data.frame()
+  vtg <- data.frame()
+  for (ml in unique(colData(se)$mouseline)) {
+    tmp <- inter.deas[[paste0(ml, grep.partial)]]
+    tmp$ML <- ml
+    tmp$significant <- "Not Significant"
+    tmp$significant[tmp$FDR < 0.05 & tmp$logFC > 1] <- "Upregulated"
+    tmp$significant[tmp$FDR < 0.05 & tmp$logFC < -1] <- "Downregulated"
+    tg <- tmp[tmp$FDR < 0.01 & abs(tmp$logFC) > 2, ]
+    tg <- tg[order(tg$FDR), ][1:min(10, nrow(tg)), ]
 
-        vd <- rbind(vd, tmp)
-        vtg <- rbind(vtg, tg)
-    }
-    vtg <- na.omit(vtg)
-    ggplot(vd, aes(x = logFC, y = -log10(FDR), color = significant)) +
-        geom_point(alpha = 0.6, size = 1.5) +
-        scale_color_manual(values = c("Not Significant" = "grey60", "Upregulated" = "darkred", "Downregulated" = "darkblue")) +
-        theme_minimal(base_size = 14) +
-        facet_wrap(~ML) +
-        labs(
-            title = plot.title,
-            x = "Log2 Fold Change",
-            y = "-log10(FDR)",
-            color = "Significance"
-        ) +
-        geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
-        geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
-        geom_text_repel(data = vtg, aes(label = rownames(vtg)), size = 3, show.legend = FALSE) +
-        theme(legend.position = "right")
+    vd <- rbind(vd, tmp)
+    vtg <- rbind(vtg, tg)
+  }
+  vtg <- na.omit(vtg)
+  ggplot(vd, aes(x = logFC, y = -log10(FDR), color = significant)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    scale_color_manual(
+      values = c(
+        "Not Significant" = "grey60",
+        "Upregulated" = "darkred",
+        "Downregulated" = "darkblue"
+      )
+    ) +
+    theme_minimal(base_size = 14) +
+    facet_wrap(~ML) +
+    labs(
+      title = plot.title,
+      x = "Log2 Fold Change",
+      y = "-log10(FDR)",
+      color = "Significance"
+    ) +
+    geom_hline(
+      yintercept = -log10(0.05),
+      linetype = "dashed",
+      color = "black"
+    ) +
+    geom_vline(
+      xintercept = c(-1, 1),
+      linetype = "dashed",
+      color = "black"
+    ) +
+    geom_text_repel(
+      data = vtg,
+      aes(label = rownames(vtg)),
+      size = 3,
+      show.legend = FALSE
+    ) +
+    theme(legend.position = "right")
 }
 ```
 
@@ -260,21 +438,41 @@ volcano_plot(".D7.SNIvSham", "SNI vs Sham (D7)")
 ```
 ```{r, SNIvSham-heat, fig.asp=1.6}
 se <- se[, order(se$mouseline, se$condition, se$day)]
-degs <- unique(unlist(lapply(inter.deas[grep("D[27]\\.SNIvSham$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("D[27]\\.SNIvSham$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(6), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(6), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.05)])
-})))
-sechm(se, degs, row_title = "SNI vs Sham (local)", top_annotation = c("condition", "day"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "SNI vs Sham (local)",
+  top_annotation = c("condition", "day"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 
-degs <- unique(unlist(lapply(inter.deas[grep("(cck|Ella|vgat|vglut2)\\.SNIvSham$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("(cck|Ella|vgat|vglut2)\\.SNIvSham$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.0002)])
-})))
-sechm(se, degs, row_title = "SNI vs Sham (global)", top_annotation = c("condition", "day"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "SNI vs Sham (global)",
+  top_annotation = c("condition", "day"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 ```
 
 ### SNI vs Naive
@@ -284,21 +482,41 @@ volcano_plot(".D2.SNIvNaive", "SNI vs Naive (D2)")
 volcano_plot(".D7.SNIvNaive", "SNI vs Naive (D7)")
 ```
 ```{r, SNIvNaive-heat, fig.asp=1.6}
-degs <- unique(unlist(lapply(inter.deas[grep("D[27]\\.SNIvNaive$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("D[27]\\.SNIvNaive$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(4), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(4), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.05)])
-})))
-sechm(se, degs, row_title = "SNI vs Naive (local)", top_annotation = c("condition", "day"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "SNI vs Naive (local)",
+  top_annotation = c("condition", "day"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 
-degs <- unique(unlist(lapply(inter.deas[grep("(cck|Ella|vgat|vglut2)\\.SNIvNaive$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("(cck|Ella|vgat|vglut2)\\.SNIvNaive$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.0003)])
-})))
-sechm(se, degs, row_title = "SNI vs Naive (global)", top_annotation = c("condition", "day"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "SNI vs Naive (global)",
+  top_annotation = c("condition", "day"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 ```
 
 ### Sham vs Naive
@@ -308,21 +526,41 @@ volcano_plot(".D2.ShamvNaive", "Sham vs Naive (D2)")
 volcano_plot(".D7.ShamvNaive", "Sham vs Naive (D7)")
 ```
 ```{r, ShamvNaive-heat, fig.asp=1.6}
-degs <- unique(unlist(lapply(inter.deas[grep("D[27]\\.ShamvNaive$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("D[27]\\.ShamvNaive$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(4), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(4), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.05)])
-})))
-sechm(se, degs, row_title = "Sham vs Naive (local)", top_annotation = c("condition", "day"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "Sham vs Naive (local)",
+  top_annotation = c("condition", "day"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 
-degs <- unique(unlist(lapply(inter.deas[grep("(cck|Ella|vgat|vglut2)\\.ShamvNaive$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("(cck|Ella|vgat|vglut2)\\.ShamvNaive$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.005)])
-})))
-sechm(se, degs, row_title = "Sham vs Naive (global)", top_annotation = c("condition", "day"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "Sham vs Naive (global)",
+  top_annotation = c("condition", "day"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 ```
 
 ### Day 2 vs Day 7
@@ -332,78 +570,125 @@ volcano_plot(".SNI.D2vD7", "D2 vs D7 (SNI)")
 volcano_plot(".Sham.D2vD7", "D2 vs D7 (Sham)")
 ```
 ```{r, D2vD7-heat, fig.asp=1.6}
-degs <- unique(unlist(lapply(inter.deas[grep("(SNI|Sham)\\.D2vD7$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("(SNI|Sham)\\.D2vD7$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(4), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(4), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.05)])
-})))
+  }
+)))
 se <- se[, order(se$mouseline, se$day, se$condition)]
-sechm(se, degs, row_title = "Day 2 vs Day 7 (local)", top_annotation = c("day", "condition"), assayName = "scaledLFC", show_rownames = T)
+sechm(
+  se,
+  degs,
+  row_title = "Day 2 vs Day 7 (local)",
+  top_annotation = c("day", "condition"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 
-degs <- unique(unlist(lapply(inter.deas[grep("(cck|Ella|vgat|vglut2)\\.D2vD7$", names(inter.deas))], function(x) {
+degs <- unique(unlist(lapply(
+  inter.deas[grep("(cck|Ella|vgat|vglut2)\\.D2vD7$", names(inter.deas))],
+  function(x) {
     if ("logFC" %in% colnames(x)) {
-        return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
+      return(getDEGs(x, lfc.th = log2(2), fdr.th = 0.05))
     }
     return(row.names(x)[which(x$FDR < 0.001)])
-})))
-sechm(se, degs, row_title = "Day 2 vs Day 7 (global)", top_annotation = c("day", "condition"), assayName = "scaledLFC", show_rownames = T)
+  }
+)))
+sechm(
+  se,
+  degs,
+  row_title = "Day 2 vs Day 7 (global)",
+  top_annotation = c("day", "condition"),
+  assayName = "scaledLFC",
+  show_rownames = T
+)
 ```
 
 ## Transcriptome vs Translatome
 
 ### in cck
 
-```{r}
+```{r, IPvInput-utils}
 volcano_plot <- function(lrt) {
-    volcano_data <- as.data.frame(topTags(lrt, n = Inf))
+  volcano_data <- as.data.frame(topTags(lrt, n = Inf))
 
-    volcano_data$significant <- "Not Significant"
-    volcano_data$significant[volcano_data$FDR < 0.05 & volcano_data$logFC > 1] <- "Upregulated"
-    volcano_data$significant[volcano_data$FDR < 0.05 & volcano_data$logFC < -1] <- "Downregulated"
-    volcano_data$significant <- as.factor(volcano_data$significant)
+  volcano_data$significant <- "Not Significant"
+  volcano_data$significant[
+    volcano_data$FDR < 0.05 & volcano_data$logFC > 1
+  ] <- "Upregulated"
+  volcano_data$significant[
+    volcano_data$FDR < 0.05 & volcano_data$logFC < -1
+  ] <- "Downregulated"
+  volcano_data$significant <- as.factor(volcano_data$significant)
 
-    top_genes <- volcano_data[volcano_data$FDR < 0.01 & abs(volcano_data$logFC) > 2, ]
-    top_genes <- top_genes[order(top_genes$FDR), ][1:15, ]
+  top_genes <- volcano_data[
+    volcano_data$FDR < 0.01 & abs(volcano_data$logFC) > 2,
+  ]
+  top_genes <- top_genes[order(top_genes$FDR), ][1:15, ]
 
-    ggplot(volcano_data, aes(x = logFC, y = -log10(FDR), color = significant)) +
-        geom_point(alpha = 0.6, size = 1.5) +
-        scale_color_manual(values = c("Not Significant" = "grey60", "Upregulated" = "darkred", "Downregulated" = "darkblue")) +
-        theme_minimal(base_size = 14) +
-        labs(
-            title = "IP vs Input",
-            x = "Log2 Fold Change",
-            y = "-log10(FDR)",
-            color = "Significance"
-        ) +
-        geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
-        geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
-        geom_text_repel(data = top_genes, aes(label = rownames(top_genes)), size = 3, show.legend = FALSE) +
-        theme(legend.position = "right")
+  ggplot(volcano_data, aes(x = logFC, y = -log10(FDR), color = significant)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    scale_color_manual(
+      values = c(
+        "Not Significant" = "grey60",
+        "Upregulated" = "darkred",
+        "Downregulated" = "darkblue"
+      )
+    ) +
+    theme_minimal(base_size = 14) +
+    labs(
+      title = "IP vs Input",
+      x = "Log2 Fold Change",
+      y = "-log10(FDR)",
+      color = "Significance"
+    ) +
+    geom_hline(
+      yintercept = -log10(0.05),
+      linetype = "dashed",
+      color = "black"
+    ) +
+    geom_vline(
+      xintercept = c(-1, 1),
+      linetype = "dashed",
+      color = "black"
+    ) +
+    geom_text_repel(
+      data = top_genes,
+      aes(label = rownames(top_genes)),
+      size = 3,
+      show.legend = FALSE
+    ) +
+    theme(legend.position = "right")
 }
 
 pie_plot <- function(lrt) {
-    volcano_data <- as.data.frame(topTags(lrt, n = Inf, p.value = 0.01))
-    top_upregulated <- volcano_data[volcano_data$logFC > 2, ]
-    top_upregulated <- top_upregulated[order(top_upregulated$FDR), ][1:15, ]
-    top_upregulated$x <- rownames(top_upregulated)
-    top_downregulated <- volcano_data[volcano_data$logFC < 2, ]
-    top_downregulated <- top_downregulated[order(top_downregulated$FDR), ][1:15, ]
-    top_downregulated$x <- rownames(top_downregulated)
+  volcano_data <- as.data.frame(topTags(lrt, n = Inf, p.value = 0.01))
+  top_upregulated <- volcano_data[volcano_data$logFC > 2, ]
+  top_upregulated <- top_upregulated[order(top_upregulated$FDR), ][1:15, ]
+  top_upregulated$x <- rownames(top_upregulated)
+  top_downregulated <- volcano_data[volcano_data$logFC < 2, ]
+  top_downregulated <- top_downregulated[order(top_downregulated$FDR), ][
+    1:15,
+  ]
+  top_downregulated$x <- rownames(top_downregulated)
 
-    ggplot(top_downregulated, aes(x = reorder(x, abs(logFC)), y = abs(logFC))) +
-        geom_bar(stat = "identity", show.legend = TRUE) +
-        coord_polar(start = 0) +
-        theme_void() +
-        theme(
-            axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
-            plot.title = element_text(hjust = 0.5)
-        ) +
-        ggtitle("Top 20 Most Downregulated Genes")
+  ggplot(top_downregulated, aes(x = reorder(x, abs(logFC)), y = abs(logFC))) +
+    geom_bar(stat = "identity", show.legend = TRUE) +
+    coord_polar(start = 0) +
+    theme_void() +
+    theme(
+      axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    ggtitle("Top 20 Most Downregulated Genes")
 }
 ```
 
-```{r}
+```{r, cck-IPvInput}
 se <- readRDS("./data/all.rds")
 se <- se[, se$mouseline == "cck" & se$sex == "F" & se$condition == "Naive"]
 dge <- DGEList(assays(se)$counts)
@@ -424,7 +709,7 @@ pie_plot(lrt)
 
 ### in Ella
 
-```{r}
+```{r, Ella-IPvInput}
 se <- readRDS("./data/all.rds")
 se <- se[, se$mouseline == "Ella"]
 dge <- DGEList(assays(se)$counts)
@@ -443,9 +728,78 @@ volcano_plot(lrt)
 pie_plot(lrt)
 ```
 
+```{r, fig.asp=1.6}
+groups <- unique(colData(se)[, c("sex", "cond_day")])
+vds <- bplapply(
+  seq_len(nrow(groups)),
+  \(i) {
+    se.sub <- se[
+      ,
+      se$sex == groups[i, "sex"] & se$cond_day == groups[i, "cond_day"]
+    ]
+    dge <- DGEList(assays(se.sub)$counts)
+    dge <- calcNormFactors(dge)
+    design <- model.matrix(~processing, data = colData(se.sub))
+    dge <- dge[filterByExpr(dge, design), , keep.lib.sizes = FALSE]
+    dge <- estimateDisp(dge, design)
+    fit <- glmFit(dge, design)
+    lrt <- glmLRT(fit, coef = "processingIP")
+    tt <- as.data.frame(topTags(lrt, n = Inf))
+    tt$gene <- rownames(tt)
+    tt$sex <- groups[i, "sex"]
+    tt$cond_day <- groups[i, "cond_day"]
+    tt$significant <- "Not Significant"
+    tt$significant[tt$FDR < 0.05 & tt$logFC > 1] <- "Upregulated"
+    tt$significant[tt$FDR < 0.05 & tt$logFC < -1] <- "Downregulated"
+    tt$significant <- as.factor(tt$significant)
+    tr <- tt[tt$FDR < 0.01 & abs(tt$logFC) > 2, ]
+    tr <- tr[order(tr$FDR), ][1:15, ]
+    list(tt = tt, tr = tr)
+  },
+  BPPARAM = MulticoreParam()
+)
+volcano_data <- do.call(rbind, lapply(vds, \(x) x$tt))
+top_regions <- do.call(rbind, lapply(vds, \(x) x$tr))
+
+ggplot(volcano_data, aes(x = logFC, y = -log10(FDR), color = significant)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(
+    values = c(
+      "Not Significant" = "grey60",
+      "Upregulated" = "darkred",
+      "Downregulated" = "darkblue"
+    )
+  ) +
+  theme_minimal(base_size = 14) +
+  facet_grid(cond_day ~ sex) +
+  labs(
+    title = "IP vs Input",
+    x = "Log2 Fold Change",
+    y = "-log10(FDR)",
+    color = "Significance"
+  ) +
+  geom_hline(
+    yintercept = -log10(0.05),
+    linetype = "dashed",
+    color = "black"
+  ) +
+  geom_vline(
+    xintercept = c(-1, 1),
+    linetype = "dashed",
+    color = "black"
+  ) +
+  geom_text_repel(
+    data = top_regions,
+    aes(label = gene),
+    size = 3,
+    show.legend = FALSE
+  ) +
+  theme(legend.position = "right")
+```
+
 ### in vgat
 
-```{r}
+```{r, vgat-IPvInput}
 se <- readRDS("./data/all.rds")
 se <- se[, se$mouseline == "vgat" & se$sex == "F" & se$condition == "Naive"]
 dge <- DGEList(assays(se)$counts)
@@ -456,7 +810,6 @@ dge <- estimateDisp(dge, design)
 fit <- glmFit(dge, design)
 lrt <- glmLRT(fit, coef = "processingIP")
 topTags(lrt)
-
 ```
 
 ```{r}
@@ -467,7 +820,7 @@ pie_plot(lrt)
 
 ### in vglut2
 
-```{r}
+```{r, vglut2-IPvInput}
 se <- readRDS("./data/all.rds")
 se <- se[, se$mouseline == "vglut2" & se$sex == "F" & se$condition == "Naive"]
 dge <- DGEList(assays(se)$counts)
